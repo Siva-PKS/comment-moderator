@@ -1,70 +1,75 @@
 import streamlit as st
 import google.generativeai as genai
+import importlib.metadata
 
-import streamlit as st
-import subprocess
+# --- App Config ---
+st.set_page_config(page_title="Comment Checker", page_icon="💬", layout="centered")
+st.title("💬 Comment Checker")
 
-with st.expander("Check installed google-generativeai version"):
-    version = subprocess.run(
-        ["pip", "show", "google-generativeai"],
-        capture_output=True, text=True
-    )
-    st.code(version.stdout)
+# --- Version Information ---
+try:
+    genai_version = importlib.metadata.version("google-generativeai")
+except importlib.metadata.PackageNotFoundError:
+    genai_version = "Unknown"
 
+st.caption(f"🧩 Google Generative AI SDK version: {genai_version}")
 
-
-
-# Configure Google API key from Streamlit secrets
+# --- Configure Google Gemini API ---
+# Make sure to set GOOGLE_API_KEY in Streamlit Cloud → Settings → Secrets
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
-st.set_page_config(page_title="AI Comment Checker", page_icon="💬")
+# --- Initialize session state ---
+if "comment" not in st.session_state:
+    st.session_state.comment = ""
 
-st.title("💬 AI Comment Checker (Google Gemini)")
-st.write("Automatically checks if a comment is offensive, harsh, vulgar, or out of context before posting.")
+# --- Text Area (Smaller Height) ---
+st.text_area(
+    "Enter your comment:",
+    key="comment",
+    height=100,
+    placeholder="Type your comment here..."
+)
 
-# Text area for comment input
-comment = st.text_area("Enter your comment:", height=100)
+# --- Buttons (Submit + Clear Side by Side) ---
+col1, col2 = st.columns([1, 1])
 
-col1, col2 = st.columns(2)
 with col1:
-    check_btn = st.button("Submit")
+    submit = st.button("Submit", use_container_width=True)
+
 with col2:
-    clear_btn = st.button("Clear")
+    clear = st.button("Clear", use_container_width=True)
 
-if clear_btn:
-    st.session_state["comment"] = ""
+# --- Button Actions ---
+if submit:
+    if not st.session_state.comment.strip():
+        st.warning("⚠️ Please enter a comment before submitting.")
+    else:
+        with st.spinner("Analyzing your comment..."):
+            try:
+                model = genai.GenerativeModel("gemini-1.5-flash-latest")
+
+                prompt = (
+                    "Analyze the following user comment and classify if it is:\n"
+                    "- Offensive or harsh\n"
+                    "- Out of context\n"
+                    "- Vulgar\n"
+                    "- Against rules or policy\n\n"
+                    f"Comment:\n{st.session_state.comment}\n\n"
+                    "Respond in one short sentence describing whether the comment is appropriate or not."
+                )
+
+                response = model.generate_content(prompt)
+                result_text = response.text.strip()
+
+                # Color-coded feedback
+                if any(word in result_text.lower() for word in ["offensive", "vulgar", "inappropriate", "harsh", "against"]):
+                    st.error("🚫 " + result_text)
+                else:
+                    st.success("✅ " + result_text)
+
+            except Exception as e:
+                st.error(f"API Error: {e}")
+
+if clear:
+    st.session_state.comment = ""
     st.experimental_rerun()
-
-if check_btn and comment.strip():
-    with st.spinner("Analyzing your comment..."):
-        try:
-            # Use Gemini model for content moderation-like analysis
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            prompt = f"""
-You are a content moderation AI. Analyze the following user comment and decide if it is:
-1. Offensive or harsh
-2. Vulgar or inappropriate
-3. Out of context or spam
-4. Safe and acceptable
-
-Comment: "{comment}"
-
-Respond strictly in JSON format:
-{{"offensive": true/false, "reason": "short explanation"}}
-            """
-            response = model.generate_content(prompt)
-            
-            # Extract text safely
-            analysis = response.text.strip()
-            st.write("🧠 **AI Analysis:**")
-            st.code(analysis, language="json")
-
-            if "true" in analysis.lower():
-                st.error("⚠️ Comment seems **offensive or violates rules.**")
-            else:
-                st.success("✅ Comment appears safe to post!")
-        except Exception as e:
-            st.error(f"API Error: {e}")
-
-elif check_btn and not comment.strip():
-    st.warning("Please enter a comment before submitting.")
