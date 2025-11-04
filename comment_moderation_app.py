@@ -122,7 +122,7 @@ Comment: {comment_input}
 # --- Clear Button Action ---
 if clear:
     st.session_state.comment = ""
-    st.experimental_rerun()
+   st.rerun()
 
 # Update session state when typing
 if comment_input != st.session_state.comment:
