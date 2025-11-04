@@ -129,17 +129,9 @@ Comment: {st.session_state.comment}
                 else:
                     st.error(f"API Error: {e}")
 
-# --- Clear Button (Safe Handling) ---
-if "clear_triggered" not in st.session_state:
-    st.session_state.clear_triggered = False
-
+# --- Clear Button ---
 if clear:
-    st.text_area = ""
     st.session_state.comment = ""
-    st.session_state.clear_triggered = True
-    st.rerun()
+    st.experimental_rerun()
 
-# Reset flag after rerun
-if st.session_state.clear_triggered:
-    st.session_state.clear_triggered = False
 
