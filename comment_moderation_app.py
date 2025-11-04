@@ -123,7 +123,11 @@ Comment: {st.session_state.comment}
                     st.success("✅ Comment appears appropriate or constructive.")
 
             except Exception as e:
-                st.error(f"API Error: {e}")
+                # Improved error handling for quota/rate-limit errors
+                if "Resource exhausted" in str(e) or "429" in str(e):
+                    st.warning("⚠️ API limit reached. Please wait a few moments before trying again.")
+                else:
+                    st.error(f"API Error: {e}")
 
 # --- Clear Button ---
 if clear:
