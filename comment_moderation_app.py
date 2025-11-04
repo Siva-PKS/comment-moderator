@@ -3,6 +3,7 @@ import google.generativeai as genai
 import importlib.metadata
 import json
 import re
+import time
 
 # --- App Config ---
 st.set_page_config(page_title="Comment Categorizer", page_icon="💬", layout="centered")
@@ -18,25 +19,6 @@ st.caption(f"🧩 Google Generative AI SDK version: {genai_version}")
 
 # --- Configure Google Gemini API ---
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-
-# --- Initialize Session State ---
-if "comment" not in st.session_state:
-    st.session_state.comment = ""
-
-# --- Text Area (Compact) ---
-st.text_area(
-    "Enter your comment:",
-    key="comment",
-    height=100,
-    placeholder="Type your comment here..."
-)
-
-# --- Buttons (Submit + Clear) ---
-col1, col2 = st.columns([1, 1])
-with col1:
-    submit = st.button("Submit", use_container_width=True)
-with col2:
-    clear = st.button("Clear", use_container_width=True)
 
 # --- Category List ---
 categories = [
@@ -65,6 +47,28 @@ category_colors = {
     "Supportive": "🟢"
 }
 
+# --- Initialize Session State ---
+if "comment" not in st.session_state:
+    st.session_state.comment = ""
+if "result" not in st.session_state:
+    st.session_state.result = None
+
+# --- Text Area (Compact + Linked to Session) ---
+comment_input = st.text_area(
+    "Enter your comment:",
+    value=st.session_state.comment,
+    height=100,
+    placeholder="Type your comment here..."
+)
+st.session_state.comment = comment_input
+
+# --- Buttons (Submit + Clear) ---
+col1, col2 = st.columns([1, 1])
+with col1:
+    submit = st.button("Submit", use_container_width=True)
+with col2:
+    clear = st.button("Clear", use_container_width=True)
+
 # --- Submit Action ---
 if submit:
     if not st.session_state.comment.strip():
@@ -72,7 +76,10 @@ if submit:
     else:
         with st.spinner("Analyzing your comment..."):
             try:
-                # Use Gemini 2.0 Flash (fast and accurate)
+                # Optional short delay (helps rate limiting)
+                time.sleep(1)
+
+                # Use Gemini 2.0 Flash model
                 model = genai.GenerativeModel("gemini-2.0-flash")
 
                 prompt = f"""
@@ -91,7 +98,7 @@ Comment: {st.session_state.comment}
                 response = model.generate_content(prompt)
                 text = response.text.strip()
 
-                # Try to extract JSON safely
+                # Try extracting JSON
                 json_text = re.search(r"\{.*\}", text, re.DOTALL)
                 if json_text:
                     try:
@@ -101,37 +108,41 @@ Comment: {st.session_state.comment}
                 else:
                     result = {"categories": ["Unrecognized"], "summary": text}
 
-                # Display results neatly (no debug info)
-                st.subheader("🧠 Summary")
-                st.write(result.get("summary", "No summary available."))
-
-                st.subheader("🏷️ Detected Categories")
-                cats = result.get("categories", [])
-                if cats:
-                    for c in cats:
-                        emoji = category_colors.get(c, "⚪")
-                        st.markdown(f"{emoji} **{c}**")
-                else:
-                    st.write("No category detected.")
-
-                # Mark harmful categories
-                harmful = {"Harsh/insulting", "Vulgar", "Harassment", "Threatening",
-                           "Sexual content", "Hate speech", "Self-harm", "Graphic violence"}
-                if any(c in harmful for c in cats):
-                    st.error("🚫 Potentially inappropriate or harmful content detected.")
-                else:
-                    st.success("✅ Comment appears appropriate or constructive.")
+                st.session_state.result = result
 
             except Exception as e:
-                # Improved error handling for quota/rate-limit errors
                 if "Resource exhausted" in str(e) or "429" in str(e):
                     st.warning("⚠️ API limit reached. Please wait a few moments before trying again.")
                 else:
                     st.error(f"API Error: {e}")
 
-# --- Clear Button ---
+# --- Display Results (if any) ---
+if st.session_state.result:
+    result = st.session_state.result
+    st.subheader("🧠 Summary")
+    st.write(result.get("summary", "No summary available."))
+
+    st.subheader("🏷️ Detected Categories")
+    cats = result.get("categories", [])
+    if cats:
+        for c in cats:
+            emoji = category_colors.get(c, "⚪")
+            st.markdown(f"{emoji} **{c}**")
+    else:
+        st.write("No category detected.")
+
+    # Mark harmful categories
+    harmful = {
+        "Harsh/insulting", "Vulgar", "Harassment", "Threatening",
+        "Sexual content", "Hate speech", "Self-harm", "Graphic violence"
+    }
+    if any(c in harmful for c in cats):
+        st.error("🚫 Potentially inappropriate or harmful content detected.")
+    else:
+        st.success("✅ Comment appears appropriate or constructive.")
+
+# --- Clear Button Logic (Safe) ---
 if clear:
     st.session_state.comment = ""
-    st.experimental_rerun()
-
-
+    st.session_state.result = None
+    st.rerun()
