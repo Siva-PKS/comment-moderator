@@ -1,6 +1,19 @@
 import streamlit as st
 import google.generativeai as genai
 
+import streamlit as st
+import subprocess
+
+with st.expander("Check installed google-generativeai version"):
+    version = subprocess.run(
+        ["pip", "show", "google-generativeai"],
+        capture_output=True, text=True
+    )
+    st.code(version.stdout)
+
+
+
+
 # Configure Google API key from Streamlit secrets
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
