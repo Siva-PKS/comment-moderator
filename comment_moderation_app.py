@@ -118,7 +118,12 @@ Comment: {comment_input}
                 else:
                     st.error(f"API Error: {e}")
 
-# --- Clear Button ---
+
+# --- Clear Button Action ---
 if clear:
     st.session_state.comment = ""
     st.experimental_rerun()
+
+# Update session state when typing
+if comment_input != st.session_state.comment:
+    st.session_state.comment = comment_input
