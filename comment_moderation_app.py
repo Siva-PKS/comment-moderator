@@ -1,10 +1,12 @@
 import streamlit as st
 import google.generativeai as genai
 import importlib.metadata
+import json
+import re
 
 # --- App Config ---
-st.set_page_config(page_title="Comment Checker", page_icon="💬", layout="centered")
-st.title("💬 Comment Checker")
+st.set_page_config(page_title="Comment Categorizer", page_icon="💬", layout="centered")
+st.title("💬 Comment Categorizer")
 
 # --- Version Info ---
 try:
@@ -29,28 +31,58 @@ st.text_area(
     placeholder="Type your comment here..."
 )
 
-# --- Buttons ---
+# --- Buttons (Submit + Clear) ---
 col1, col2 = st.columns([1, 1])
 with col1:
     submit = st.button("Submit", use_container_width=True)
 with col2:
     clear = st.button("Clear", use_container_width=True)
 
-# --- On Submit ---
+# --- Category List ---
+categories = [
+    "Harsh/insulting", "Vulgar", "Harassment", "Threatening", "Out of context",
+    "Sexual content", "Hate speech", "Self-harm", "Graphic violence",
+    "Positive feedback", "Constructive criticism", "Neutral opinion",
+    "Polite disagreement", "Clarification request", "Supportive"
+]
+
+# --- Category Colors ---
+category_colors = {
+    "Harsh/insulting": "🔴",
+    "Vulgar": "🔴",
+    "Harassment": "🔴",
+    "Threatening": "🔴",
+    "Sexual content": "🟠",
+    "Hate speech": "🔴",
+    "Self-harm": "🟣",
+    "Graphic violence": "🔴",
+    "Out of context": "🟡",
+    "Positive feedback": "🟢",
+    "Constructive criticism": "🟢",
+    "Neutral opinion": "⚪",
+    "Polite disagreement": "🟢",
+    "Clarification request": "🔵",
+    "Supportive": "🟢"
+}
+
+# --- Submit Action ---
 if submit:
     if not st.session_state.comment.strip():
         st.warning("⚠️ Please enter a comment before submitting.")
     else:
         with st.spinner("Analyzing your comment..."):
             try:
-                # Use Gemini 2.0 Flash
+                # Use Gemini 2.0 Flash (fast and accurate)
                 model = genai.GenerativeModel("gemini-2.0-flash")
 
                 prompt = f"""
-You are a comment moderation AI.
-Analyze the following comment and provide ONLY a concise JSON object:
+You are a content moderation AI. Classify the following user comment into one or more of these categories:
+{', '.join(categories)}
+
+Return a valid JSON object in this format:
 {{
-  "summary": "<brief summary of the comment content>"
+  "categories": ["<list of applicable categories>"],
+  "summary": "<brief summary of the comment>"
 }}
 
 Comment: {st.session_state.comment}
@@ -59,24 +91,36 @@ Comment: {st.session_state.comment}
                 response = model.generate_content(prompt)
                 text = response.text.strip()
 
-                # Try to extract the summary text
-                import re, json
-                match = re.search(r'\{.*\}', text, re.DOTALL)
-                summary_text = ""
-                if match:
+                # Try to extract JSON safely
+                json_text = re.search(r"\{.*\}", text, re.DOTALL)
+                if json_text:
                     try:
-                        data = json.loads(match.group())
-                        summary_text = data.get("summary", "")
+                        result = json.loads(json_text.group())
                     except json.JSONDecodeError:
-                        summary_text = text
+                        result = {"categories": ["Unrecognized"], "summary": text}
                 else:
-                    summary_text = text
+                    result = {"categories": ["Unrecognized"], "summary": text}
 
-                if summary_text:
-                    st.subheader("🧠 Summary")
-                    st.write(summary_text)
+                # Display results neatly (no debug info)
+                st.subheader("🧠 Summary")
+                st.write(result.get("summary", "No summary available."))
+
+                st.subheader("🏷️ Detected Categories")
+                cats = result.get("categories", [])
+                if cats:
+                    for c in cats:
+                        emoji = category_colors.get(c, "⚪")
+                        st.markdown(f"{emoji} **{c}**")
                 else:
-                    st.info("No summary could be generated.")
+                    st.write("No category detected.")
+
+                # Mark harmful categories
+                harmful = {"Harsh/insulting", "Vulgar", "Harassment", "Threatening",
+                           "Sexual content", "Hate speech", "Self-harm", "Graphic violence"}
+                if any(c in harmful for c in cats):
+                    st.error("🚫 Potentially inappropriate or harmful content detected.")
+                else:
+                    st.success("✅ Comment appears appropriate or constructive.")
 
             except Exception as e:
                 st.error(f"API Error: {e}")
