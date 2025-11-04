@@ -134,6 +134,7 @@ if "clear_triggered" not in st.session_state:
     st.session_state.clear_triggered = False
 
 if clear:
+    st.text_area = ""
     st.session_state.comment = ""
     st.session_state.clear_triggered = True
     st.rerun()
