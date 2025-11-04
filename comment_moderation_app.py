@@ -46,7 +46,7 @@ if submit:
     else:
         with st.spinner("Analyzing your comment..."):
             try:
-                model = genai.GenerativeModel("gemini-1.5-flash-latest")
+                model = genai.GenerativeModel("gemini-2.5-flash")
 
                 prompt = (
                     "Analyze the following user comment and classify if it is:\n"
