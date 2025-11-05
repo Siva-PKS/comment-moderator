@@ -146,27 +146,38 @@ if clear:
     st.rerun()
 
 
-# --- Popup Modal ---
+# --- Popup Replacement (Works in all Streamlit versions) ---
 if st.session_state.show_popup:
-    with st.modal("Comment Analysis Result"):
-        st.write("### 📝 Summary")
-        st.write(st.session_state.summary)
+    st.markdown("""
+        <div style="
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.45); display: flex; 
+            align-items: center; justify-content: center; z-index: 9999;">
+            <div style="
+                background: white; padding: 24px; border-radius: 10px; 
+                width: 450px; max-width: 90%; box-shadow: 0px 4px 20px rgba(0,0,0,0.2);">
+    """, unsafe_allow_html=True)
 
-        st.write("### 🏷️ Categories Detected")
-        for c in st.session_state.categories:
-            st.write(f"{category_colors.get(c,'⚪')} **{c}**")
+    st.write("### 📝 Summary")
+    st.write(st.session_state.summary)
 
-        st.write("### 💡 Suggested Response")
-        st.write(st.session_state.suggested_response)
+    st.write("### 🏷️ Categories Detected")
+    for c in st.session_state.categories:
+        st.write(f"{category_colors.get(c,'⚪')} **{c}**")
 
-        colA, colB = st.columns(2)
-        with colA:
-            if st.button("✅ Apply Response"):
-                st.session_state.comment_input += "\n\n" + st.session_state.suggested_response
-                st.session_state.show_popup = False
-                st.rerun()
+    st.write("### 💡 Suggested Response")
+    st.write(st.session_state.suggested_response)
 
-        with colB:
-            if st.button("❌ Cancel"):
-                st.session_state.show_popup = False
-                st.rerun()
+    colA, colB = st.columns(2)
+    with colA:
+        if st.button("✅ Apply Response"):
+            st.session_state.comment_input += "\n\n" + st.session_state.suggested_response
+            st.session_state.show_popup = False
+            st.rerun()
+
+    with colB:
+        if st.button("❌ Cancel"):
+            st.session_state.show_popup = False
+            st.rerun()
+
+    st.markdown("</div></div>", unsafe_allow_html=True)
