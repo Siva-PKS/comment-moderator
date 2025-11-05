@@ -5,179 +5,149 @@ import json
 import re
 import time
 
-# --- App Config ---
-st.set_page_config(page_title="Comment Moderation + Auto-Responder", page_icon="💬", layout="centered")
-st.title("Comment Moderation + Auto-Response Suggestion")
+# --- Page Setup ---
+st.set_page_config(page_title="Comment Moderation + Auto Response", page_icon="💬", layout="centered")
+st.title("💬 Comment Moderation + Auto Response")
 
-
-# Session State Initialization
-if "comment_input" not in st.session_state:
-    st.session_state.comment_input = ""
-
-if "show_popup" not in st.session_state:
-    st.session_state.show_popup = False
-
-if "summary" not in st.session_state:
-    st.session_state.summary = ""
-
-if "categories" not in st.session_state:
-    st.session_state.categories = []
-
-if "suggested_response" not in st.session_state:
-    st.session_state.suggested_response = ""
-
-
-# Custom Button Styling
-button_css = """
+# --- Styling (Blinking Red Border When Harmful) ---
+st.markdown("""
 <style>
-div.stButton > button {
-    width: 200px !important;
+.blink-red {
+    border: 2px solid red !important;
+    animation: blink 1s infinite;
 }
-div.stButton > button {
-    background: linear-gradient(rgb(0, 86, 145), rgb(26, 103, 156));
-    color: white !important;
-    border: none;
-    border-radius: 6px;
-    padding: 8px 12px;
-    font-weight: 600;
-    cursor: pointer;
+@keyframes blink {
+    50% { border-color: transparent; }
 }
-div.stButton > button:hover {
-    filter: brightness(1.12);
+textarea {
+    border-radius: 6px !important;
 }
 </style>
-"""
-st.markdown(button_css, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-
-# Version Info
+# --- Version Info ---
 try:
     genai_version = importlib.metadata.version("google-generativeai")
-except importlib.metadata.PackageNotFoundError:
+except:
     genai_version = "Unknown"
-
 st.caption(f"Google Generative AI SDK version: {genai_version}")
 
-# Configure Google Gemini API
+# --- Configure Google Gemini API ---
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
+# --- Session State Variables ---
+if "comment" not in st.session_state:
+    st.session_state.comment = ""
+if "suggested_response" not in st.session_state:
+    st.session_state.suggested_response = ""
+if "is_harmful" not in st.session_state:
+    st.session_state.is_harmful = False
 
-# Categories
-categories_list = [
+# --- Categories ---
+categories = [
     "Harsh/insulting", "Vulgar", "Harassment", "Threatening", "Out of context",
     "Sexual content", "Hate speech", "Self-harm", "Graphic violence",
     "Positive feedback", "Constructive criticism", "Neutral opinion",
     "Polite disagreement", "Clarification request", "Supportive"
 ]
 
-category_colors = {
-    "Harsh/insulting": "🔴", "Vulgar": "🔴", "Harassment": "🔴",
-    "Threatening": "🔴", "Sexual content": "🟠", "Hate speech": "🔴",
-    "Self-harm": "🟣", "Graphic violence": "🔴", "Out of context": "🟡",
-    "Positive feedback": "🟢", "Constructive criticism": "🟢",
-    "Neutral opinion": "⚪", "Polite disagreement": "🟢",
-    "Clarification request": "🔵", "Supportive": "🟢"
-}
+harmful_set = {"Harsh/insulting", "Vulgar", "Harassment", "Threatening",
+               "Sexual content", "Hate speech", "Self-harm", "Graphic violence"}
 
-# Text Input
-st.session_state.comment_input = st.text_area(
+# --- Text Area ---
+text_area_class = "blink-red" if st.session_state.is_harmful else ""
+
+comment_input = st.text_area(
     "Enter your comment:",
-    value=st.session_state.comment_input,
-    height=150,
-    placeholder="Type or paste a detailed comment here..."
+    value=st.session_state.comment,
+    height=120,
+    key="comment_input"
 )
 
+# Apply blinking class via JS patch
+st.markdown(f"""
+<script>
+var textareas = window.parent.document.getElementsByTagName('textarea');
+for (let t of textareas) {{
+    t.className = "{text_area_class}";
+}}
+</script>
+""", unsafe_allow_html=True)
 
-col1, col2 = st.columns(2)
+# --- Buttons ---
+col1, col2, col3 = st.columns([1,1,1])
 with col1:
-    submit = st.button("Analyze & Suggest Response")
+    submit = st.button("Analyze")
 with col2:
+    apply_resp = st.button("Apply Suggestion")
+with col3:
     clear = st.button("Clear")
 
-
-# --- Submit Action ---
+# --- Submit Logic ---
 if submit:
-    if not st.session_state.comment_input.strip():
-        st.warning("⚠️ Please enter a comment before submitting.")
+    if not comment_input.strip():
+        st.warning("⚠️ Please enter a comment before analyzing.")
     else:
-        with st.spinner("Analyzing your comment..."):
-            time.sleep(1)
-
+        with st.spinner("Analyzing..."):
+            time.sleep(1.5)
             try:
                 model = genai.GenerativeModel("gemini-2.0-flash")
 
                 prompt = f"""
-Classify the comment into the following categories:
-{', '.join(categories_list)}
+Classify the comment into categories:
+{', '.join(categories)}
 
-Return JSON in this format:
+Return JSON:
 {{
-  "categories": ["<list>"],
-  "summary": "<short summary of tone>",
-  "suggested_response": "<polite suggested reply to user>"
+  "categories": ["list"],
+  "summary": "short summary",
+  "suggested_response": "helpful user-friendly reply"
 }}
 
-Comment: {st.session_state.comment_input}
-"""
+Comment: {comment_input}
+                """
 
                 response = model.generate_content(prompt)
-                raw = response.text.strip()
-                json_data = re.search(r"\{.*\}", raw, re.DOTALL)
+                text = response.text.strip()
 
-                if json_data:
-                    data = json.loads(json_data.group())
+                match = re.search(r"\{.*\}", text, re.DOTALL)
+                result = json.loads(match.group()) if match else {}
+
+                summary = result.get("summary", "")
+                detected = result.get("categories", [])
+                suggestion = result.get("suggested_response", "")
+
+                st.session_state.suggested_response = suggestion
+                st.session_state.is_harmful = any(c in harmful_set for c in detected)
+
+                st.markdown(f"### 📝 Summary\n{summary}")
+
+                if detected:
+                    st.markdown("### 🏷️ Categories Detected:")
+                    for c in detected:
+                        st.write(f"- **{c}**")
+
+                if st.session_state.is_harmful:
+                    st.error("🚫 Harmful or inappropriate content detected.")
                 else:
-                    data = {"categories": ["Unrecognized"], "summary": raw, "suggested_response": ""}
+                    st.success("✅ Comment appears appropriate.")
 
-                st.session_state.summary = data.get("summary", "")
-                st.session_state.categories = data.get("categories", [])
-                st.session_state.suggested_response = data.get("suggested_response", "")
-
-                st.session_state.show_popup = True
+                if suggestion:
+                    st.markdown("### 💡 Suggested Response:")
+                    st.write(suggestion)
 
             except Exception as e:
                 st.error(f"API Error: {e}")
 
-
-# Clear Button
-if clear:
-    st.session_state.comment_input = ""
-    st.session_state.show_popup = False
+# --- Apply Suggestion ---
+if apply_resp and st.session_state.suggested_response:
+    st.session_state.comment = st.session_state.comment_input + "\n\n" + st.session_state.suggested_response
     st.rerun()
 
+# --- Clear ---
+if clear:
+    st.session_state.comment = ""
+    st.session_state.suggested_response = ""
+    st.session_state.is_harmful = False
+    st.rerun()
 
-# --- Popup Replacement (Works in all Streamlit versions) ---
-if st.session_state.show_popup:
-    st.markdown("""
-        <div style="
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.45); display: flex; 
-            align-items: center; justify-content: center; z-index: 9999;">
-            <div style="
-                background: white; padding: 24px; border-radius: 10px; 
-                width: 450px; max-width: 90%; box-shadow: 0px 4px 20px rgba(0,0,0,0.2);">
-    """, unsafe_allow_html=True)
-
-    st.write("### 📝 Summary")
-    st.write(st.session_state.summary)
-
-    st.write("### 🏷️ Categories Detected")
-    for c in st.session_state.categories:
-        st.write(f"{category_colors.get(c,'⚪')} **{c}**")
-
-    st.write("### 💡 Suggested Response")
-    st.write(st.session_state.suggested_response)
-
-    colA, colB = st.columns(2)
-    with colA:
-        if st.button("✅ Apply Response"):
-            st.session_state.comment_input += "\n\n" + st.session_state.suggested_response
-            st.session_state.show_popup = False
-            st.rerun()
-
-    with colB:
-        if st.button("❌ Cancel"):
-            st.session_state.show_popup = False
-            st.rerun()
-
-    st.markdown("</div></div>", unsafe_allow_html=True)
