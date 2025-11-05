@@ -49,14 +49,6 @@ genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 if "comment" not in st.session_state:
     st.session_state.comment = ""
 
-# --- Text Area ---
-comment_input = st.text_area(
-    "Enter your comment:",
-    value=st.session_state.comment,
-    height=100,width=550,
-    placeholder="Type your comment here..."
-)
-
 # --- Fixed Content Container (matches text area width) ---
 with st.container():
     # Center block by applying custom width styling
@@ -72,7 +64,7 @@ with st.container():
 
     st.markdown('<div class="center-box">', unsafe_allow_html=True)
 
-    # Text Area
+   # --- Text Area ---
     comment_input = st.text_area(
         "Enter your comment:",
         value=st.session_state.comment,
