@@ -14,6 +14,9 @@ st.title("Comment Categorizer")
 button_css = """
 <style>
 div.stButton > button {
+    width: 140px !important;
+}
+div.stButton > button {
     background: linear-gradient(rgb(0, 86, 145) 0%, rgb(0, 86, 145) 50%, 
                                rgb(26, 103, 156) 50%, rgb(26, 103, 156) 100%) 0px 0px / 100% 200%;
     color: white !important;
@@ -50,7 +53,7 @@ if "comment" not in st.session_state:
 comment_input = st.text_area(
     "Enter your comment:",
     value=st.session_state.comment,
-    height=100,width=300,
+    height=100,width=500,
     placeholder="Type your comment here..."
 )
 
