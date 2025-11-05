@@ -53,16 +53,42 @@ if "comment" not in st.session_state:
 comment_input = st.text_area(
     "Enter your comment:",
     value=st.session_state.comment,
-    height=100,width=500,
+    height=100,width=550,
     placeholder="Type your comment here..."
 )
 
-# --- Buttons ---
-col1, col2 = st.columns([1, 1])
-with col1:
-    submit = st.button("Leave a comment", use_container_width=True)
-with col2:
-    clear = st.button("Clear", use_container_width=True)
+# --- Fixed Content Container (matches text area width) ---
+with st.container():
+    # Center block by applying custom width styling
+    st.markdown("""
+        <style>
+            .center-box {
+                max-width: 550px;
+                margin-left: auto;
+                margin-right: auto;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="center-box">', unsafe_allow_html=True)
+
+    # Text Area
+    comment_input = st.text_area(
+        "Enter your comment:",
+        value=st.session_state.comment,
+        height=100,
+        placeholder="Type your comment here..."
+    )
+
+    # Buttons (compact, same width as text area)
+    col1, col2 = st.columns(2)
+    with col1:
+        submit = st.button("Leave a comment")
+    with col2:
+        clear = st.button("Clear")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # --- Category Setup ---
 categories = [
