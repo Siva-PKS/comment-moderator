@@ -14,7 +14,7 @@ st.title("Comment Categorizer")
 button_css = """
 <style>
 div.stButton > button {
-    width: 140px !important;
+    width: 200px !important;
 }
 div.stButton > button {
     background: linear-gradient(rgb(0, 86, 145) 0%, rgb(0, 86, 145) 50%, 
