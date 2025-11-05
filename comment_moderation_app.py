@@ -65,23 +65,24 @@ if analyze:
     else:
         st.session_state.comment = comment_input
         
-        with st.spinner("Analyzing comment..."):
-            time.sleep(1)
+       with st.spinner("Analyzing comment..."):
+    time.sleep(1)
 
-            model = genai.GenerativeModel("gemini-1.5-flash-latest")
+    model = genai.GenerativeModel("models/gemini-1.5-flash-latest")
 
-            prompt = f"""
-            You are a content moderation AI. Analyze the user comment and return JSON:
-            {{
-              "categories": ["list categories"],
-              "summary": "short meaning",
-              "suggested_response": "polite helpful response"
-            }}
-            Comment: "{comment_input}"
-            """
+    prompt = f"""
+    You are a content moderation AI. Analyze the user comment and return JSON:
+    {{
+      "categories": ["list categories"],
+      "summary": "short meaning",
+      "suggested_response": "polite helpful response"
+    }}
+    Comment: "{comment_input}"
+    """
 
-            response = model.generate_content(prompt)
-            raw_text = response.text
+    response = model.generate_content(contents=prompt)
+    raw_text = response.text
+
 
             match = re.search(r"\{.*\}", raw_text, re.DOTALL)
             if match:
