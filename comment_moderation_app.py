@@ -7,7 +7,29 @@ import time
 
 # --- App Config ---
 st.set_page_config(page_title="Comment Categorizer", page_icon="💬", layout="centered")
-st.title("💬 Comment Categorizer")
+st.title("Comment Categorizer")
+
+
+# Custom Button Styling
+button_css = """
+<style>
+div.stButton > button {
+    background: linear-gradient(rgb(0, 86, 145) 0%, rgb(0, 86, 145) 50%, 
+                               rgb(26, 103, 156) 50%, rgb(26, 103, 156) 100%) 0px 0px / 100% 200%;
+    color: white !important;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+div.stButton > button:hover {
+    filter: brightness(1.12);
+}
+</style>
+"""
+st.markdown(button_css, unsafe_allow_html=True)
+
 
 # --- Version Info ---
 try:
@@ -15,7 +37,7 @@ try:
 except importlib.metadata.PackageNotFoundError:
     genai_version = "Unknown"
 
-st.caption(f"🧩 Google Generative AI SDK version: {genai_version}")
+st.caption(f" Google Generative AI SDK version: {genai_version}")
 
 # --- Configure Google Gemini API ---
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
@@ -28,14 +50,14 @@ if "comment" not in st.session_state:
 comment_input = st.text_area(
     "Enter your comment:",
     value=st.session_state.comment,
-    height=100,
+    height=100,width=300,
     placeholder="Type your comment here..."
 )
 
 # --- Buttons ---
 col1, col2 = st.columns([1, 1])
 with col1:
-    submit = st.button("Submit", use_container_width=True)
+    submit = st.button("Leave a comment", use_container_width=True)
 with col2:
     clear = st.button("Clear", use_container_width=True)
 
@@ -94,11 +116,11 @@ Comment: {comment_input}
                     result = {"categories": ["Unrecognized"], "summary": text}
 
                 # Display results
-                st.markdown(f"**🧠 Summary:** {result.get('summary', 'No summary available.')}")
+                st.markdown(f"** Summary:** {result.get('summary', 'No summary available.')}")
 
                 cats = result.get("categories", [])
                 if cats:
-                    st.markdown("**🏷️ Detected Categories:**")
+                    st.markdown("** Detected Categories:**")
                     for c in cats:
                         emoji = category_colors.get(c, "⚪")
                         st.markdown(f"{emoji} **{c}**")
