@@ -1,155 +1,128 @@
 import streamlit as st
 import google.generativeai as genai
-import importlib.metadata
-import json
-import re
 import time
 
-# --- App Config ---
-st.set_page_config(page_title="Comment Moderation + Auto Response", page_icon="💬", layout="centered")
-st.title("💬 Comment Moderation & Auto-Response Suggestion")
+st.set_page_config(page_title="Comment Moderator", layout="centered")
 
-# --- Custom CSS ---
+# --- Google API Key ---
+GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+genai.configure(api_key=GOOGLE_API_KEY)
+
+# --- Initialize State ---
+if "analysis" not in st.session_state:
+    st.session_state.analysis = None
+if "suggested_text" not in st.session_state:
+    st.session_state.suggested_text = ""
+if "comment_input" not in st.session_state:
+    st.session_state.comment_input = ""
+
+# --- Styling ---
 st.markdown("""
 <style>
-textarea.blink-red {
-    border: 2px solid red !important;
-    animation: blink 0.8s infinite;
+textarea {
+    border: 2px solid #ccc !important;
+}
+textarea.red-border {
+    border: 3px solid red !important;
+    animation: blink 1s infinite;
 }
 @keyframes blink {
     50% { border-color: transparent; }
 }
-.custom-btn {
-    background: linear-gradient(rgb(0, 86, 145), rgb(26, 103, 156));
-    color: white !important;
-    border-radius: 6px;
-    padding: 8px;
-    font-weight: 600;
-    border: none;
-    cursor: pointer;
-}
-.custom-btn:hover {
-    filter: brightness(1.12);
-}
-.center-box {
-    max-width: 550px;
-    margin-left: auto;
-    margin-right: auto;
-}
 </style>
 """, unsafe_allow_html=True)
 
-# --- Version Info ---
-try:
-    genai_version = importlib.metadata.version("google-generativeai")
-except importlib.metadata.PackageNotFoundError:
-    genai_version = "Unknown"
-st.caption(f"🧩 Google Generative AI SDK version: {genai_version}")
-
-# --- Configure Gemini API ---
-genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-
-# --- Initialize Session State ---
-for key in ["comment", "suggested_response", "harmful_detected"]:
-    if key not in st.session_state:
-        st.session_state[key] = ""
-
-# --- Layout Container ---
-st.markdown('<div class="center-box">', unsafe_allow_html=True)
+st.title("📝 Comment Quality & Tone Improver")
 
 # --- Text Area ---
-text_area_class = "blink-red" if st.session_state.harmful_detected else ""
-comment_input = st.text_area(
-    "Enter your comment:",
-    value=st.session_state.comment,
-    placeholder="Type your comment here...",
-    height=120,
-    key="comment_box",
-)
+def render_text_area():
+    border_class = "red-border" if st.session_state.get("flag_issue", False) else ""
+    return st.text_area(
+        "Enter your comment:",
+        value=st.session_state.comment_input,
+        height=200,
+        key="comment_box",
+        placeholder="Type your comment here...",
+        help="Write any comment and click Analyze."
+    )
 
-# --- Buttons Row ---
-col1, col2, col3 = st.columns([1,1,1])
+comment_input = render_text_area()
+
+# --- Buttons ---
+col1, col2, col3 = st.columns([1, 1, 1])
+
 with col1:
-    submit = st.button("Analyze", key="analyze_btn")
+    analyze = st.button("Analyze", use_container_width=True)
+
 with col2:
-    clear = st.button("Clear", key="clear_btn")
+    apply_suggestion = st.button("Apply Suggestion", use_container_width=True)
+
 with col3:
-    apply_resp = st.button("Apply Suggestion", key="apply_btn")
+    clear = st.button("Clear", use_container_width=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
 
-# --- Category Setup ---
-categories = [
-    "Harsh/insulting", "Vulgar", "Harassment", "Threatening", "Out of context",
-    "Sexual content", "Hate speech", "Self-harm", "Graphic violence",
-    "Positive feedback", "Constructive criticism", "Neutral opinion",
-    "Polite disagreement", "Clarification request", "Supportive"
-]
-
-harmful_set = {"Harsh/insulting", "Vulgar", "Harassment", "Threatening",
-               "Sexual content", "Hate speech", "Self-harm", "Graphic violence"}
-
-# --- Analyze Comment ---
-if submit:
-    if not comment_input.strip():
-        st.warning("⚠️ Please enter a comment before analyzing.")
-    else:
-        st.session_state.comment = comment_input
-        with st.spinner("Analyzing..."):
-            time.sleep(1.5)
-            try:
-                model = genai.GenerativeModel("gemini-2.0-flash")
-
-                prompt = f"""
-Classify the following comment into these categories:
-{', '.join(categories)}
-
-Return JSON:
-{{
- "categories": ["<list>"],
- "summary": "<short summary>",
- "suggested_response": "<polite & professional reply>"
-}}
-
-Comment: {comment_input}
-"""
-
-                response = model.generate_content(prompt).text.strip()
-                json_data = re.search(r"\{.*\}", response, re.DOTALL)
-
-                result = json.loads(json_data.group()) if json_data else {"summary":"", "categories":[], "suggested_response":""}
-
-                st.write("### 🧠 Summary")
-                st.write(result.get("summary","No summary."))
-
-                st.write("### 🏷️ Categories")
-                cats = result.get("categories", [])
-                for c in cats:
-                    st.write(f"- {c}")
-
-                # Store suggested response for Apply button
-                st.session_state.suggested_response = result.get("suggested_response", "")
-
-                # Harmful Check
-                st.session_state.harmful_detected = any(c in harmful_set for c in cats)
-
-                if st.session_state.harmful_detected:
-                    st.error("🚫 Harmful or inappropriate content detected.")
-                else:
-                    st.success("✅ Content appears appropriate.")
-
-            except Exception as e:
-                st.error(f"API Error: {e}")
-
-# --- Apply Suggestion ---
-if apply_resp and st.session_state.suggested_response:
-    st.session_state.comment = st.session_state.suggested_response
-    st.session_state.harmful_detected = False
-    st.rerun()
-
-# --- Clear ---
+# --- Clear Button Logic ---
 if clear:
-    st.session_state.comment = ""
-    st.session_state.suggested_response = ""
-    st.session_state.harmful_detected = False
-    st.rerun()
+    st.session_state.comment_input = ""
+    st.session_state.analysis = None
+    st.session_state.flag_issue = False
+    st.experimental_rerun()
+
+
+# --- Analyze Button Logic ---
+if analyze:
+    if not comment_input.strip():
+        st.warning("Please enter text before analyzing.")
+    else:
+        try:
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            prompt = f"""
+            Analyze the following user comment and output JSON:
+            1. Summary of meaning
+            2. Category tags such as Positive, Negative, Supportive, Harassing, Sexual, Toxic, etc.
+            3. A polite rewritten improved response.
+
+            Comment: "{comment_input}"
+            """
+
+            result = model.generate_content(prompt)
+            response_text = result.text
+
+            # parse response safely
+            import re
+            summary = re.search(r"Summary:(.*)", response_text)
+            categories = re.findall(r"- (.*)", response_text)
+            suggestion = re.search(r"Suggested Response:(.*)", response_text)
+
+            st.session_state.analysis = {
+                "summary": summary.group(1).strip() if summary else "Not found",
+                "categories": categories,
+                "suggested": suggestion.group(1).strip() if suggestion else comment_input
+            }
+
+            st.session_state.suggested_text = st.session_state.analysis["suggested"]
+            st.session_state.flag_issue = any(x.lower() in ["sexual", "abusive", "toxic", "harassing"] for x in categories)
+
+            time.sleep(1)
+            st.experimental_rerun()
+
+        except Exception as e:
+            st.error(f"Error: {e}")
+
+
+# --- Apply Suggestion Logic ---
+if apply_suggestion and st.session_state.suggested_text:
+    st.session_state.comment_input = st.session_state.suggested_text  # replace text fully
+    st.session_state.flag_issue = False
+    st.experimental_rerun()
+
+
+# --- Show Analysis Result ---
+if st.session_state.analysis:
+    st.subheader("✅ Analysis Result")
+    st.write(f"**Summary:** {st.session_state.analysis['summary']}")
+    st.write("**Categories Detected:**")
+    for tag in st.session_state.analysis["categories"]:
+        st.write(f"- {tag}")
+    st.write("**Suggested Response:**")
+    st.code(st.session_state.analysis["suggested"])
