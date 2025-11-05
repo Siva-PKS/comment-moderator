@@ -141,8 +141,11 @@ Comment: {comment_input}
 
 # --- Apply Suggestion ---
 if apply_resp and st.session_state.suggested_response:
-    st.session_state.comment = st.session_state.comment_input + "\n\n" + st.session_state.suggested_response
+    # Replace the text area content with the suggested response only
+    st.session_state.comment = st.session_state.suggested_response
+    st.session_state.is_harmful = False  # remove red highlight if present
     st.rerun()
+
 
 # --- Clear ---
 if clear:
