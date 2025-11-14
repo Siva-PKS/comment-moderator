@@ -21,7 +21,6 @@ if "suggestion" not in st.session_state:
 if "is_harmful" not in st.session_state:
     st.session_state.is_harmful = False
 
-
 # --- Styling for Text Area ---
 st.markdown("""
 <style>
@@ -38,9 +37,8 @@ textarea {
 </style>
 """, unsafe_allow_html=True)
 
-
 # --- Text Input Area ---
-text_area_class = "danger" if st.session_state.is_harmful else ""
+# (Note: Streamlit doesn't accept a "class" param for text_area; keeping CSS available globally)
 comment_input = st.text_area(
     "Enter your comment:",
     value=st.session_state.comment,
@@ -49,7 +47,7 @@ comment_input = st.text_area(
 )
 
 # Buttons
-col1, col2, col3 = st.columns([1,1,1])
+col1, col2, col3 = st.columns([1, 1, 1])
 with col1:
     analyze = st.button("Analyze")
 with col2:
@@ -57,76 +55,98 @@ with col2:
 with col3:
     clear = st.button("Clear")
 
-
 # --- Analyze Button Logic ---
 if analyze:
     if not comment_input.strip():
         st.warning("⚠️ Please enter text before analyzing.")
     else:
+        # store the current text
         st.session_state.comment = comment_input
-        
-       with st.spinner("Analyzing comment..."):
-    time.sleep(1)
 
-    model = genai.GenerativeModel("models/gemini-1.5-flash-latest")
+        # show spinner while calling the model
+        with st.spinner("Analyzing comment..."):
+            # small pause to show spinner (optional)
+            time.sleep(1)
 
-    prompt = f"""
-    You are a content moderation AI. Analyze the user comment and return JSON:
-    {{
-      "categories": ["list categories"],
-      "summary": "short meaning",
-      "suggested_response": "polite helpful response"
-    }}
-    Comment: "{comment_input}"
-    """
+            # prepare model and prompt
+            model = genai.GenerativeModel("models/gemini-1.5-flash-latest")
 
-    response = model.generate_content(contents=prompt)
-    raw_text = response.text
+            prompt = f"""
+You are a content moderation AI. Analyze the user comment and return JSON:
+{{
+  "categories": ["list categories"],
+  "summary": "short meaning",
+  "suggested_response": "polite helpful response"
+}}
+Comment: "{comment_input}"
+"""
 
+            # call the model
+            try:
+                response = model.generate_content(contents=prompt)
+                raw_text = response.text if hasattr(response, "text") else str(response)
+            except Exception as e:
+                st.error(f"Error calling generation API: {e}")
+                raw_text = ""
 
+        # after spinner block, parse the response
+        result = {"categories": [], "summary": "No summary", "suggested_response": ""}
+        if raw_text:
+            # try to extract JSON object from the model output
             match = re.search(r"\{.*\}", raw_text, re.DOTALL)
             if match:
-                result = json.loads(match.group())
+                try:
+                    result = json.loads(match.group())
+                except json.JSONDecodeError:
+                    # fallback: attempt to clean common trailing commas, etc.
+                    cleaned = re.sub(r",\s*}", "}", match.group())
+                    cleaned = re.sub(r",\s*\]", "]", cleaned)
+                    try:
+                        result = json.loads(cleaned)
+                    except Exception:
+                        result = {"categories": [], "summary": "No summary", "suggested_response": ""}
             else:
-                result = {"categories": [], "summary": "No summary", "suggested_response": ""}
+                # no JSON found — keep defaults
+                result = {"categories": [], "summary": raw_text.strip()[:200], "suggested_response": ""}
 
-            categories = result.get("categories", [])
-            summary = result.get("summary", "No summary")
-            suggestion = result.get("suggested_response", "")
+        categories = result.get("categories", [])
+        summary = result.get("summary", "No summary")
+        suggestion = result.get("suggested_response", "")
 
-            harmful_categories = {"Harassment", "Hate speech", "Vulgar", "Threatening", "Self-harm", "Graphic violence", "Sexual content", "Harsh/insulting"}
+        harmful_categories = {
+            "Harassment", "Hate speech", "Vulgar", "Threatening",
+            "Self-harm", "Graphic violence", "Sexual content", "Harsh/insulting"
+        }
 
-            st.session_state.is_harmful = any(c in harmful_categories for c in categories)
+        st.session_state.is_harmful = any(c in harmful_categories for c in categories)
+        st.session_state.suggestion = suggestion
 
-            st.markdown(f"### 📝 Summary\n{summary}")
+        # show results
+        st.markdown(f"### 📝 Summary\n{summary}")
 
-            if categories:
-                st.markdown("### 🏷️ Categories Detected:")
-                for c in categories:
-                    st.write(f"- **{c}**")
+        if categories:
+            st.markdown("### 🏷️ Categories Detected:")
+            for c in categories:
+                st.write(f"- **{c}**")
 
-            if st.session_state.is_harmful:
-                st.error("🚫 Harmful or inappropriate content detected! Text area border turned RED.")
-            else:
-                st.success("✅ Content appears safe or constructive.")
+        if st.session_state.is_harmful:
+            st.error("🚫 Harmful or inappropriate content detected! Text area border turned RED.")
+        else:
+            st.success("✅ Content appears safe or constructive.")
 
-            st.session_state.suggestion = suggestion
-
-            if suggestion:
-                st.markdown("### 💡 Suggested Response")
-                st.info(suggestion)
-
+        if suggestion:
+            st.markdown("### 💡 Suggested Response")
+            st.info(suggestion)
 
 # --- Apply Suggestion (replace text & show updated) ---
 if apply_suggest and st.session_state.suggestion:
     st.session_state.comment = st.session_state.suggestion
     st.session_state.is_harmful = False  # reset border
-    st.rerun()
-
+    st.experimental_rerun()
 
 # --- Clear Button ---
 if clear:
     st.session_state.comment = ""
     st.session_state.suggestion = ""
     st.session_state.is_harmful = False
-    st.rerun()
+    st.experimental_rerun()
