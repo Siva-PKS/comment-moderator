@@ -11,6 +11,19 @@ st.title("💬 Comment Moderation + Auto-Suggestion System")
 # --- Configure Google Gemini API ---
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
+# --- Category Setup ---
+categories = [
+    "Harsh/insulting", "Vulgar", "Harassment", "Threatening", "Out of context",
+    "Sexual content", "Hate speech", "Self-harm", "Graphic violence",
+    "Positive feedback", "Constructive criticism", "Neutral opinion",
+    "Polite disagreement", "Clarification request", "Supportive"
+]
+
+harmful_set = {
+    "Harsh/insulting", "Vulgar", "Harassment", "Threatening",
+    "Sexual content", "Hate speech", "Self-harm", "Graphic violence"
+}
+
 # --- Session State Initialization ---
 if "comment" not in st.session_state:
     st.session_state.comment = ""
@@ -38,7 +51,6 @@ textarea {
 """, unsafe_allow_html=True)
 
 # --- Text Input Area ---
-# (Note: Streamlit doesn't accept a "class" param for text_area; keeping CSS available globally)
 comment_input = st.text_area(
     "Enter your comment:",
     value=st.session_state.comment,
@@ -60,73 +72,60 @@ if analyze:
     if not comment_input.strip():
         st.warning("⚠️ Please enter text before analyzing.")
     else:
-        # store the current text
         st.session_state.comment = comment_input
 
-        # show spinner while calling the model
         with st.spinner("Analyzing comment..."):
-            # small pause to show spinner (optional)
             time.sleep(1)
 
-            # prepare model and prompt
+            # Correct model name
             model = genai.GenerativeModel("gemini-1.5-flash")
 
             prompt = f"""
-You are a content moderation AI. Analyze the user comment and return JSON:
+You are a content moderation AI. Analyze the user comment and return JSON ONLY in this format:
 {{
-  "categories": ["list categories"],
+  "categories": ["choose from this list only: {categories}"],
   "summary": "short meaning",
   "suggested_response": "polite helpful response"
 }}
 Comment: "{comment_input}"
 """
 
-            # call the model
             try:
-                response = model.generate_content(contents=prompt)
-                raw_text = response.text if hasattr(response, "text") else str(response)
+                response = model.generate_content(prompt)
+                raw_text = response.text
             except Exception as e:
                 st.error(f"Error calling generation API: {e}")
                 raw_text = ""
 
-        # after spinner block, parse the response
+        # Extract JSON response
         result = {"categories": [], "summary": "No summary", "suggested_response": ""}
+
         if raw_text:
-            # try to extract JSON object from the model output
             match = re.search(r"\{.*\}", raw_text, re.DOTALL)
             if match:
                 try:
                     result = json.loads(match.group())
-                except json.JSONDecodeError:
-                    # fallback: attempt to clean common trailing commas, etc.
-                    cleaned = re.sub(r",\s*}", "}", match.group())
-                    cleaned = re.sub(r",\s*\]", "]", cleaned)
+                except:
                     try:
+                        cleaned = re.sub(r",\s*}", "}", match.group())
+                        cleaned = re.sub(r",\s*\]", "]", cleaned)
                         result = json.loads(cleaned)
-                    except Exception:
-                        result = {"categories": [], "summary": "No summary", "suggested_response": ""}
-            else:
-                # no JSON found — keep defaults
-                result = {"categories": [], "summary": raw_text.strip()[:200], "suggested_response": ""}
+                    except:
+                        result = result
 
-        categories = result.get("categories", [])
+        detected_categories = result.get("categories", [])
         summary = result.get("summary", "No summary")
         suggestion = result.get("suggested_response", "")
 
-        harmful_categories = {
-            "Harassment", "Hate speech", "Vulgar", "Threatening",
-            "Self-harm", "Graphic violence", "Sexual content", "Harsh/insulting"
-        }
-
-        st.session_state.is_harmful = any(c in harmful_categories for c in categories)
+        st.session_state.is_harmful = any(c in harmful_set for c in detected_categories)
         st.session_state.suggestion = suggestion
 
-        # show results
+        # Show results
         st.markdown(f"### 📝 Summary\n{summary}")
 
-        if categories:
+        if detected_categories:
             st.markdown("### 🏷️ Categories Detected:")
-            for c in categories:
+            for c in detected_categories:
                 st.write(f"- **{c}**")
 
         if st.session_state.is_harmful:
@@ -138,10 +137,10 @@ Comment: "{comment_input}"
             st.markdown("### 💡 Suggested Response")
             st.info(suggestion)
 
-# --- Apply Suggestion (replace text & show updated) ---
+# --- Apply Suggestion ---
 if apply_suggest and st.session_state.suggestion:
     st.session_state.comment = st.session_state.suggestion
-    st.session_state.is_harmful = False  # reset border
+    st.session_state.is_harmful = False
     st.experimental_rerun()
 
 # --- Clear Button ---
