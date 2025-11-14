@@ -78,7 +78,7 @@ if analyze:
             time.sleep(1)
 
             # Correct model name
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("models/gemini-1.5-flash")
 
             prompt = f"""
 You are a content moderation AI. Analyze the user comment and return JSON ONLY in this format:
