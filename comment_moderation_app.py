@@ -69,7 +69,7 @@ if analyze:
             time.sleep(1)
 
             # prepare model and prompt
-            model = genai.GenerativeModel("models/gemini-1.5-flash-latest")
+            model = genai.GenerativeModel("gemini-1.5-flash")
 
             prompt = f"""
 You are a content moderation AI. Analyze the user comment and return JSON:
