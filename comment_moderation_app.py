@@ -1,6 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
-import importlib.metadata
+from openai import OpenAI
 import json
 import re
 import time
@@ -9,20 +8,15 @@ import time
 st.set_page_config(page_title="Comment Categorizer", page_icon="💬", layout="centered")
 st.title("💬 Comment Categorizer")
 
-# --- Version Info ---
-try:
-    genai_version = importlib.metadata.version("google-generativeai")
-except importlib.metadata.PackageNotFoundError:
-    genai_version = "Unknown"
+# --- Initialize OpenAI ---
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-st.caption(f"🧩 Google Generative AI SDK version: {genai_version}")
-
-# --- Configure Google Gemini API ---
-genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-
-# --- Initialize Session State ---
+# --- Session State ---
 if "comment" not in st.session_state:
     st.session_state.comment = ""
+
+if "last_call" not in st.session_state:
+    st.session_state.last_call = 0
 
 # --- Text Area ---
 comment_input = st.text_area(
@@ -39,7 +33,7 @@ with col1:
 with col2:
     clear = st.button("Clear", use_container_width=True)
 
-# --- Category Setup ---
+# --- Categories ---
 categories = [
     "Harsh/insulting", "Vulgar", "Harassment", "Threatening", "Out of context",
     "Sexual content", "Hate speech", "Self-harm", "Graphic violence",
@@ -56,34 +50,61 @@ category_colors = {
     "Clarification request": "🔵", "Supportive": "🟢"
 }
 
+# --- Retry Wrapper ---
+def call_openai_with_retry(prompt, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a content moderation AI."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=150,
+            )
+            return response.choices[0].message.content.strip()
+
+        except Exception as e:
+            if "429" in str(e) or "rate limit" in str(e).lower():
+                wait_time = 2 ** attempt
+                st.warning(f"⚠️ Rate limited. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                raise e
+    raise Exception("Max retries exceeded")
+
 # --- Submit Action ---
 if submit:
     if not comment_input.strip():
         st.warning("⚠️ Please enter a comment before submitting.")
     else:
-        st.session_state.comment = comment_input
-        with st.spinner("Analyzing your comment..."):
-            time.sleep(2)
-            try:
-                model = genai.GenerativeModel("gemini-2.0-flash")
+        # --- Simple client-side rate limit ---
+        if time.time() - st.session_state.last_call < 2:
+            st.warning("⏳ Please wait a moment before submitting again.")
+            st.stop()
 
+        st.session_state.last_call = time.time()
+        st.session_state.comment = comment_input
+
+        with st.spinner("Analyzing your comment..."):
+            try:
                 prompt = f"""
-You are a content moderation AI. Classify the following user comment into one or more of these categories:
+Classify the comment into one or more of these categories:
 {', '.join(categories)}
 
-Return a valid JSON object in this format:
+Return ONLY valid JSON:
 {{
-  "categories": ["<list of applicable categories>"],
-  "summary": "<brief summary of the comment>"
+  "categories": [],
+  "summary": ""
 }}
 
 Comment: {comment_input}
-                """
+"""
 
-                response = model.generate_content(prompt)
-                text = response.text.strip()
+                text = call_openai_with_retry(prompt)
 
-                # Try to extract JSON safely
+                # --- Extract JSON safely ---
                 json_text = re.search(r"\{.*\}", text, re.DOTALL)
                 if json_text:
                     try:
@@ -93,7 +114,7 @@ Comment: {comment_input}
                 else:
                     result = {"categories": ["Unrecognized"], "summary": text}
 
-                # Display results
+                # --- Display results ---
                 st.markdown(f"**🧠 Summary:** {result.get('summary', 'No summary available.')}")
 
                 cats = result.get("categories", [])
@@ -105,20 +126,20 @@ Comment: {comment_input}
                 else:
                     st.write("No category detected.")
 
-                harmful = {"Harsh/insulting", "Vulgar", "Harassment", "Threatening",
-                           "Sexual content", "Hate speech", "Self-harm", "Graphic violence"}
+                harmful = {
+                    "Harsh/insulting", "Vulgar", "Harassment", "Threatening",
+                    "Sexual content", "Hate speech", "Self-harm", "Graphic violence"
+                }
+
                 if any(c in harmful for c in cats):
                     st.error("🚫 Potentially inappropriate or harmful content detected.")
                 else:
                     st.success("✅ Comment appears appropriate or constructive.")
 
             except Exception as e:
-                if "Resource exhausted" in str(e) or "429" in str(e):
-                    st.warning("⚠️ API limit reached. Please wait a few moments before trying again.")
-                else:
-                    st.error(f"API Error: {e}")
+                st.error(f"API Error: {e}")
 
 # --- Clear Button ---
 if clear:
     st.session_state.comment = ""
-    st.experimental_rerun()
+    st.rerun()
