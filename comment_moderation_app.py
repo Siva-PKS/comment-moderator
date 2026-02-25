@@ -8,7 +8,7 @@ import time
 st.set_page_config(page_title="Comment Categorizer", page_icon="💬", layout="centered")
 st.title("💬 Comment Categorizer")
 
-# --- Initialize OpenAI ---
+# --- OpenAI Client ---
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # --- Session State ---
@@ -17,21 +17,6 @@ if "comment" not in st.session_state:
 
 if "last_call" not in st.session_state:
     st.session_state.last_call = 0
-
-# --- Text Area ---
-comment_input = st.text_area(
-    "Enter your comment:",
-    value=st.session_state.comment,
-    height=100,
-    placeholder="Type your comment here..."
-)
-
-# --- Buttons ---
-col1, col2 = st.columns([1, 1])
-with col1:
-    submit = st.button("Submit", use_container_width=True)
-with col2:
-    clear = st.button("Clear", use_container_width=True)
 
 # --- Categories ---
 categories = [
@@ -50,8 +35,8 @@ category_colors = {
     "Clarification request": "🔵", "Supportive": "🟢"
 }
 
-# --- Retry Wrapper ---
-def call_openai_with_retry(prompt, max_retries=3):
+# --- Robust Retry Wrapper ---
+def call_openai_with_retry(prompt, max_retries=5):
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
@@ -66,20 +51,56 @@ def call_openai_with_retry(prompt, max_retries=3):
             return response.choices[0].message.content.strip()
 
         except Exception as e:
-            if "429" in str(e) or "rate limit" in str(e).lower():
-                wait_time = 2 ** attempt
+            error_str = str(e).lower()
+
+            # --- Handle rate limits ---
+            if "429" in error_str or "rate limit" in error_str:
+                wait_time = min(60, 2 ** attempt)
                 st.warning(f"⚠️ Rate limited. Retrying in {wait_time}s...")
                 time.sleep(wait_time)
-            else:
-                raise e
-    raise Exception("Max retries exceeded")
+                continue
+
+            # --- Handle quota issues ---
+            if "quota" in error_str or "billing" in error_str:
+                raise Exception(
+                    "OpenAI quota exceeded or billing not enabled. "
+                    "Please check https://platform.openai.com/billing"
+                )
+
+            # --- Unknown error ---
+            raise e
+
+    raise Exception(
+        "Max retries exceeded due to rate limits. "
+        "Please wait and try again later."
+    )
+
+# --- Cached analyzer (BIG cost saver) ---
+@st.cache_data(ttl=3600)
+def analyze_comment_cached(prompt):
+    return call_openai_with_retry(prompt)
+
+# --- Text Area ---
+comment_input = st.text_area(
+    "Enter your comment:",
+    value=st.session_state.comment,
+    height=100,
+    placeholder="Type your comment here..."
+)
+
+# --- Buttons ---
+col1, col2 = st.columns([1, 1])
+with col1:
+    submit = st.button("Submit", use_container_width=True)
+with col2:
+    clear = st.button("Clear", use_container_width=True)
 
 # --- Submit Action ---
 if submit:
     if not comment_input.strip():
         st.warning("⚠️ Please enter a comment before submitting.")
     else:
-        # --- Simple client-side rate limit ---
+        # --- Client-side rate limiting ---
         if time.time() - st.session_state.last_call < 2:
             st.warning("⏳ Please wait a moment before submitting again.")
             st.stop()
@@ -102,9 +123,9 @@ Return ONLY valid JSON:
 Comment: {comment_input}
 """
 
-                text = call_openai_with_retry(prompt)
+                text = analyze_comment_cached(prompt)
 
-                # --- Extract JSON safely ---
+                # --- Safe JSON extraction ---
                 json_text = re.search(r"\{.*\}", text, re.DOTALL)
                 if json_text:
                     try:
@@ -114,7 +135,7 @@ Comment: {comment_input}
                 else:
                     result = {"categories": ["Unrecognized"], "summary": text}
 
-                # --- Display results ---
+                # --- Display ---
                 st.markdown(f"**🧠 Summary:** {result.get('summary', 'No summary available.')}")
 
                 cats = result.get("categories", [])
